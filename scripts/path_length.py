@@ -4,14 +4,23 @@ from nav_msgs.msg import Odometry
 from builtin_interfaces.msg import Time
 import numpy as np
 from std_msgs.msg import Float64
+from geometry_msgs.msg import Twist
+
 
 class CalculatePathLengthNode(Node):
     def __init__(self):
         super().__init__('calculate_path_length_node')
         self.subscription = self.create_subscription(
             Odometry,
-            '/odom',  # Replace with your odometry topic
+            '/odom', 
             self.odometry_callback,
+            10
+        )
+
+        self.subscription = self.create_subscription(
+            Twist,
+            '/cmd_vel',
+            self.twist_callback,
             10
         )
 
@@ -21,7 +30,14 @@ class CalculatePathLengthNode(Node):
         self.start_time = None
         self.end_time = None
 
-    def odometry_callback(self, msg):
+    def twist_callback(self, msg):
+        if self.start_time is None:
+            self.start_time = self.get_clock().now()
+
+        self.end_time = self.get_clock().now()
+
+
+    def odometry_callback(self, msg): 
         current_position = np.array([
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
@@ -29,26 +45,15 @@ class CalculatePathLengthNode(Node):
         ])
 
         if self.last_position is not None:
-            # Calculate Euclidean distance between consecutive positions
-            distance = np.linalg.norm(current_position - self.last_position)
+            distance = np.linalg.norm(current_position - self.last_position) 
             self.path_length += distance
 
         self.last_position = current_position
 
-        if self.start_time is None:
-            self.start_time = self.get_time_in_sec(msg.header.stamp)
-
-        self.end_time = self.get_time_in_sec(msg.header.stamp)
-
         # Print path length continuously
-
         path_length_msg = Float64()
         path_length_msg.data = self.path_length
         self.path_length_publisher.publish(path_length_msg)
-        # self.get_logger().info("Current Path Length: {:.4f} meters".format(self.path_length))
-
-    def get_time_in_sec(self, stamp):
-        return stamp.sec + stamp.nanosec / 1e9
 
     def main(self):
         self.get_logger().info("Calculating path length and traversal time using odometry. Press Ctrl+C to exit.")
@@ -58,9 +63,10 @@ class CalculatePathLengthNode(Node):
             pass  # Catch KeyboardInterrupt to print final path length
 
         if self.start_time is not None and self.end_time is not None:
-            traversal_time = self.end_time - self.start_time
+            traversal_time = float((self.end_time - self.start_time).nanoseconds / 1e9)
             self.get_logger().info("Final Path Length: {:.4f} meters".format(self.path_length))
             self.get_logger().info("Traversal Time: {:.4f} seconds".format(traversal_time))
+
         else:
             self.get_logger().info("Not enough data to calculate path length and traversal time.")
 
